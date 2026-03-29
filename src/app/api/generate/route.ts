@@ -32,11 +32,28 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({ image, prompt, ratio: ratio ?? "1280:720", duration: duration ?? 5 }),
     });
 
-    const data = await n8nResponse.json();
+    const responseText = await n8nResponse.text();
+
+    if (!responseText || responseText.trim() === "") {
+      return NextResponse.json(
+        { error: "Video generation service returned an empty response. Check n8n workflow logs." },
+        { status: 502 }
+      );
+    }
+
+    let data: Record<string, unknown>;
+    try {
+      data = JSON.parse(responseText);
+    } catch {
+      return NextResponse.json(
+        { error: "Video generation service returned an invalid response." },
+        { status: 502 }
+      );
+    }
 
     if (!n8nResponse.ok) {
       return NextResponse.json(
-        { error: data?.error ?? "Failed to start video generation." },
+        { error: (data?.error as string) ?? "Failed to start video generation." },
         { status: n8nResponse.status }
       );
     }

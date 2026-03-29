@@ -20,11 +20,28 @@ export async function GET(req: NextRequest) {
       headers: { "Content-Type": "application/json" },
     });
 
-    const data = await n8nResponse.json();
+    const responseText = await n8nResponse.text();
+
+    if (!responseText || responseText.trim() === "") {
+      return NextResponse.json(
+        { error: "Status service returned an empty response. Check n8n workflow logs." },
+        { status: 502 }
+      );
+    }
+
+    let data: Record<string, unknown>;
+    try {
+      data = JSON.parse(responseText);
+    } catch {
+      return NextResponse.json(
+        { error: "Status service returned an invalid response." },
+        { status: 502 }
+      );
+    }
 
     if (!n8nResponse.ok) {
       return NextResponse.json(
-        { error: data?.error ?? "Failed to check video status." },
+        { error: (data?.error as string) ?? "Failed to check video status." },
         { status: n8nResponse.status }
       );
     }
