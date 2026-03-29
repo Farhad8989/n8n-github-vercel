@@ -1,0 +1,30 @@
+# Secrets
+.env
+.env.local
+.env.*.local
+credentials.json
+token.json
+
+# Temporary processing files
+.tmp/
+
+# Next.js
+.next/
+out/
+
+# Node.js
+node_modules/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Vercel
+.vercel

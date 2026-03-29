@@ -1,0 +1,142 @@
+{
+  "name": "AI Video Generator - Start Generation",
+  "nodes": [
+    {
+      "id": "webhook-generate",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "generate-video",
+      "parameters": {
+        "path": "generate-video",
+        "httpMethod": "POST",
+        "responseMode": "responseNode",
+        "options": {}
+      }
+    },
+    {
+      "id": "validate-input",
+      "name": "Validate Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const body = $input.first().json.body || {};\n\nconst image = body.image;\nconst prompt = body.prompt;\nconst ratio = body.ratio || '1280:720';\nconst duration = body.duration || 5;\n\nif (!image || typeof image !== 'string') {\n  throw new Error('Missing required field: image (base64 data URI)');\n}\n\nif (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {\n  throw new Error('Missing required field: prompt');\n}\n\nconst allowedRatios = ['1280:720', '720:1280', '960:960', '1584:672', '1104:832', '832:1104', '672:1584'];\nconst safeRatio = allowedRatios.includes(ratio) ? ratio : '1280:720';\n\nconst safeDuration = [5, 10].includes(Number(duration)) ? Number(duration) : 5;\n\nreturn [{ json: { image, prompt: prompt.trim(), ratio: safeRatio, duration: safeDuration } }];"
+      }
+    },
+    {
+      "id": "call-runway",
+      "name": "Call Runway ML API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [680, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.dev.runwayml.com/v1/image_to_video",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.RUNWAY_API_KEY }}"
+            },
+            {
+              "name": "X-Runway-Version",
+              "value": "2024-11-06"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyContentType": "json",
+        "jsonBody": "={\n  \"model\": \"gen3a_turbo\",\n  \"promptImage\": \"{{ $json.image }}\",\n  \"promptText\": \"{{ $json.prompt }}\",\n  \"ratio\": \"{{ $json.ratio }}\",\n  \"duration\": {{ $json.duration }}\n}",
+        "options": {}
+      }
+    },
+    {
+      "id": "format-response",
+      "name": "Format Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const data = $input.first().json;\n\nif (!data.id) {\n  throw new Error('Runway API did not return a task ID. Response: ' + JSON.stringify(data));\n}\n\nreturn [{ json: { taskId: data.id, status: 'pending' } }];"
+      }
+    },
+    {
+      "id": "respond-generate",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1120, 300],
+      "parameters": {
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Input": {
+      "main": [
+        [
+          {
+            "node": "Call Runway ML API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Runway ML API": {
+      "main": [
+        [
+          {
+            "node": "Format Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "executionTimeout": 60
+  },
+  "tags": ["ai", "video", "runway", "webhook"]
+}

@@ -1,0 +1,139 @@
+{
+  "name": "AI Video Generator - Check Status",
+  "nodes": [
+    {
+      "id": "webhook-status",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "check-status",
+      "parameters": {
+        "path": "check-status",
+        "httpMethod": "GET",
+        "responseMode": "responseNode",
+        "options": {}
+      }
+    },
+    {
+      "id": "validate-task-id",
+      "name": "Validate Task ID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const taskId = $input.first().json.query?.taskId;\n\nif (!taskId || typeof taskId !== 'string' || taskId.trim().length === 0) {\n  throw new Error('Missing required query parameter: taskId');\n}\n\nreturn [{ json: { taskId: taskId.trim() } }];"
+      }
+    },
+    {
+      "id": "get-runway-status",
+      "name": "Get Runway Task Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [680, 300],
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.dev.runwayml.com/v1/tasks/{{ $json.taskId }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.RUNWAY_API_KEY }}"
+            },
+            {
+              "name": "X-Runway-Version",
+              "value": "2024-11-06"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "map-status",
+      "name": "Map Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const data = $input.first().json;\nconst runwayStatus = data.status;\n\nif (runwayStatus === 'SUCCEEDED') {\n  const videoUrl = data.output?.video || (Array.isArray(data.output) ? data.output[0] : null);\n  if (!videoUrl) {\n    return [{ json: { status: 'failed', error: 'Video generation succeeded but no output URL was returned.' } }];\n  }\n  return [{ json: { status: 'completed', videoUrl } }];\n}\n\nif (runwayStatus === 'FAILED') {\n  return [{ json: {\n    status: 'failed',\n    error: data.failureMessage || data.failure || 'Video generation failed. Try a different image or prompt.'\n  } }];\n}\n\n// QUEUED or IN_PROGRESS\nreturn [{ json: { status: 'processing', runwayStatus } }];"
+      }
+    },
+    {
+      "id": "respond-status",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1120, 300],
+      "parameters": {
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate Task ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Task ID": {
+      "main": [
+        [
+          {
+            "node": "Get Runway Task Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Runway Task Status": {
+      "main": [
+        [
+          {
+            "node": "Map Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Map Status": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "executionTimeout": 30
+  },
+  "tags": ["ai", "video", "runway", "webhook"]
+}
