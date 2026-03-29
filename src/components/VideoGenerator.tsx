@@ -5,10 +5,10 @@ import { useState, useRef, useCallback, useEffect } from "react";
 type AppState = "idle" | "starting" | "processing" | "completed" | "error";
 
 const ASPECT_RATIOS = [
-  { label: "Landscape (16:9)", value: "1280:720" },
-  { label: "Portrait (9:16)", value: "720:1280" },
-  { label: "Square (1:1)", value: "960:960" },
-  { label: "Cinematic (21:9)", value: "1584:672" },
+  { label: "Landscape (1280×768)", value: "1280:768" },
+  { label: "Portrait (768×1280)", value: "768:1280" },
+  { label: "Landscape 16:9", value: "16:9" },
+  { label: "Portrait 9:16", value: "9:16" },
 ];
 
 const MAX_IMAGE_BYTES = 3.5 * 1024 * 1024; // 3.5 MB (safe limit for base64 → Runway)
