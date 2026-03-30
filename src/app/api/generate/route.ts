@@ -1,11 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const REPLICATE_MODEL_VERSION =
-  "4eaf2b01d3bf70d8a2e00b219efeb7cb415855ad18b7dacdc4cae664a73a6eea";
-
 export async function POST(req: NextRequest) {
-  const token = process.env.REPLICATE_API_TOKEN;
-  if (!token) {
+  const webhookUrl = process.env.N8N_GENERATE_WEBHOOK_URL;
+  if (!webhookUrl) {
     return NextResponse.json(
       { error: "Video generation service is not configured." },
       { status: 503 }
@@ -28,50 +25,43 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const allowedRatios = ["16:9", "9:16"];
-  const safeRatio = allowedRatios.includes(ratio ?? "") ? ratio! : "16:9";
-  const numFrames = (duration ?? 5) >= 10 ? 81 : 41;
-
   try {
-    const response = await fetch("https://api.replicate.com/v1/predictions", {
+    const n8nResponse = await fetch(webhookUrl, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-        Prefer: "wait",
-      },
-      body: JSON.stringify({
-        version: REPLICATE_MODEL_VERSION,
-        input: {
-          image,
-          prompt,
-          resolution: safeRatio,
-          num_frames: numFrames,
-          frames_per_second: 8,
-        },
-      }),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image, prompt, ratio: ratio ?? "16:9", duration: duration ?? 5 }),
     });
 
-    const data = await response.json();
+    const responseText = await n8nResponse.text();
 
-    if (!response.ok) {
+    if (!responseText || responseText.trim() === "") {
       return NextResponse.json(
-        { error: data?.detail ?? "Failed to start video generation." },
-        { status: response.status }
-      );
-    }
-
-    if (!data.id) {
-      return NextResponse.json(
-        { error: "Replicate did not return a prediction ID." },
+        { error: "Video generation service returned an empty response. Check n8n workflow logs." },
         { status: 502 }
       );
     }
 
-    return NextResponse.json({ taskId: data.id, status: "pending" });
+    let data: Record<string, unknown>;
+    try {
+      data = JSON.parse(responseText);
+    } catch {
+      return NextResponse.json(
+        { error: "Video generation service returned an invalid response." },
+        { status: 502 }
+      );
+    }
+
+    if (!n8nResponse.ok) {
+      return NextResponse.json(
+        { error: (data?.error as string) ?? "Failed to start video generation." },
+        { status: n8nResponse.status }
+      );
+    }
+
+    return NextResponse.json(data);
   } catch {
     return NextResponse.json(
-      { error: "Could not reach the video generation service." },
+      { error: "Could not reach the video generation service. Check your n8n webhook URL." },
       { status: 502 }
     );
   }
