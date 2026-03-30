@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(req: NextRequest) {
-  const webhookUrl = process.env.N8N_STATUS_WEBHOOK_URL;
-  if (!webhookUrl) {
+  const token = process.env.REPLICATE_API_TOKEN;
+  if (!token) {
     return NextResponse.json(
       { error: "Status service is not configured." },
       { status: 503 }
@@ -11,45 +11,48 @@ export async function GET(req: NextRequest) {
 
   const taskId = req.nextUrl.searchParams.get("taskId");
   if (!taskId) {
-    return NextResponse.json({ error: "'taskId' query parameter is required." }, { status: 400 });
+    return NextResponse.json(
+      { error: "'taskId' query parameter is required." },
+      { status: 400 }
+    );
   }
 
   try {
-    const n8nResponse = await fetch(`${webhookUrl}?taskId=${encodeURIComponent(taskId)}`, {
-      method: "GET",
-      headers: { "Content-Type": "application/json" },
-    });
+    const response = await fetch(
+      `https://api.replicate.com/v1/predictions/${encodeURIComponent(taskId)}`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
 
-    const responseText = await n8nResponse.text();
+    const data = await response.json();
 
-    if (!responseText || responseText.trim() === "") {
+    if (!response.ok) {
       return NextResponse.json(
-        { error: "Status service returned an empty response. Check n8n workflow logs." },
-        { status: 502 }
+        { error: data?.detail ?? "Failed to check video status." },
+        { status: response.status }
       );
     }
 
-    let data: Record<string, unknown>;
-    try {
-      data = JSON.parse(responseText);
-    } catch {
-      return NextResponse.json(
-        { error: "Status service returned an invalid response." },
-        { status: 502 }
-      );
+    // Map Replicate statuses to our statuses
+    if (data.status === "succeeded") {
+      const videoUrl = Array.isArray(data.output) ? data.output[0] : data.output;
+      return NextResponse.json({ status: "completed", videoUrl });
+    } else if (data.status === "failed" || data.status === "canceled") {
+      return NextResponse.json({
+        status: "failed",
+        error: data.error ?? "Video generation failed.",
+      });
+    } else {
+      // starting, processing
+      return NextResponse.json({ status: "processing" });
     }
-
-    if (!n8nResponse.ok) {
-      return NextResponse.json(
-        { error: (data?.error as string) ?? "Failed to check video status." },
-        { status: n8nResponse.status }
-      );
-    }
-
-    return NextResponse.json(data);
   } catch {
     return NextResponse.json(
-      { error: "Could not reach the status service. Check your n8n webhook URL." },
+      { error: "Could not reach the status service." },
       { status: 502 }
     );
   }
